@@ -1,0 +1,17 @@
+{
+  "name": "weread-collector-skill",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Codex skill for collecting WeRead public-account articles through Chrome/CDP.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  },
+  "scripts": {
+    "validate": "node scripts/validate_sources.js --config=sources.example.json",
+    "smoke": "node scripts/weread-content-cdp.js --config=sources.example.json --source=example --smoke-test"
+  }
+}

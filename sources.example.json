@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "timeZone": "Asia/Shanghai",
+  "sources": [
+    {
+      "name": "example",
+      "type": "wechat_official_account",
+      "collection": "项目库",
+      "bookId": "MP_WXS_0000000000",
+      "readerUrl": "https://weread.qq.com/web/mp/reader/example",
+      "latestUpdateAt": null,
+      "latestUpdateStatus": "pending_reader_refresh"
+    }
+  ]
+}

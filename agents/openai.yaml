@@ -1,0 +1,7 @@
+interface:
+  display_name: "WeRead公众号抓取"
+  short_description: "发现收藏公众号并稳定抓取文章与媒体内容"
+  default_prompt: "Use $weread-collector to discover my WeRead public-account sources and fetch new articles."
+
+policy:
+  allow_implicit_invocation: true
