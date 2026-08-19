@@ -13,6 +13,7 @@ Use the source registry as the only source-selection input. Do not hardcode a pu
 - Install the bundled Node dependency with `npm install` in the Skill directory, or set `WEREAD_PLAYWRIGHT_MODULE` to an existing Playwright installation. Never rely on a machine-specific absolute module path.
 - GitHub is for versioning and validation. Scheduled collection must run on the user's Mac or a trusted self-hosted runner that has an already-authenticated Chrome profile; GitHub-hosted runners cannot access the user's WeRead login session.
 - Run one source at a time, persist per-article cache and diagnostics, and alert on failures rather than replacing the local registry.
+- For recurring execution, read [references/scheduling.md](references/scheduling.md). Use Codex desktop automation with Direct Chrome, or the bundled incremental runner with an authenticated local CDP Chrome. Do not schedule authenticated collection on GitHub-hosted runners.
 
 ## Execution Modes
 
@@ -67,6 +68,8 @@ node <skill-dir>/scripts/weread-content-cdp.js \
 
 The command writes a JSON result, Markdown transcript, per-article cache, downloaded media, and diagnostics. A non-zero exit code means the run did not complete; inspect the JSON summary before retrying.
 
+For recurring multi-source CDP runs, call `scripts/run_incremental.js` once instead of repeatedly invoking the single-source runner. It maintains a local cursor per Book ID, overlaps the previous two days, serializes sources, prevents concurrent runs, and writes `state/last-run.json`. Preview its plan with `--dry-run` before the first real run.
+
 For a direct Chrome run, do not invoke the CDP runner. Read the archive and reader DOM through the browser-control skill, then write the extracted structured result with the normal file tools. Keep the same source schema and failure reason codes so direct and CDP runs remain interchangeable.
 
 ## Stability Rules
@@ -76,3 +79,4 @@ For a direct Chrome run, do not invoke the CDP runner. Read the archive and read
 - Stop index pagination when the API returns no items, no new IDs, or an item older than the requested range.
 - Keep source discovery separate from article scraping. A stale or missing latest-update timestamp must not remove a source from the registry.
 - Never interpret an empty homepage mini-shelf as the complete collection; full sources come from the configured archive discovery result.
+- Advance the incremental cursor after the index and output complete, even if a few articles are terminally unavailable; keep those failures in diagnostics. Do not advance the cursor after a fatal source-level error.

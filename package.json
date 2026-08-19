@@ -12,6 +12,7 @@
   },
   "scripts": {
     "validate": "node scripts/validate_sources.js --config=sources.example.json",
-    "smoke": "node scripts/weread-content-cdp.js --config=sources.example.json --source=example --smoke-test"
+    "smoke": "node scripts/weread-content-cdp.js --config=sources.example.json --source=example --smoke-test",
+    "incremental:plan": "node scripts/run_incremental.js --config=sources.example.json --dry-run"
   }
 }
