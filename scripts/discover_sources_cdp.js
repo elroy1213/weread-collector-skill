@@ -36,15 +36,46 @@ async function main() {
       name: element.querySelector(".title")?.getAttribute("title") || (element.innerText || "").trim(),
       readerUrl: element.href,
     })));
+    const bodyText = await page.locator("body").innerText().catch(() => "");
+    const configExists = fs.existsSync(CONFIG_PATH);
+    const previous = configExists ? JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8")) : { version: 2, timeZone: "Asia/Shanghai" };
+    if (!discovered.length) {
+      const loginRequired = /登录|扫码|微信登录|login/i.test(bodyText);
+      console.error(JSON.stringify({
+        ok: false,
+        reasonCode: loginRequired ? "login_required" : "no_sources_found",
+        message: loginRequired ? "微信读书尚未登录，请先在此 Chrome 中扫码登录。" : "未发现公众号 reader 链接，未修改现有 sources.json。",
+        configPath: CONFIG_PATH,
+        existingSourceCount: Array.isArray(previous.sources) ? previous.sources.length : 0,
+      }, null, 2));
+      process.exitCode = 2;
+      return;
+    }
     const sources = discovered.map((source) => ({ ...source, type: "wechat_official_account", collection: "项目库", bookId: parseBookId(source.readerUrl), latestUpdateAt: null, latestUpdateStatus: "pending_reader_refresh" }));
-    const previous = fs.existsSync(CONFIG_PATH) ? JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8")) : { version: 2, timeZone: "Asia/Shanghai" };
     const oldById = new Map((previous.sources || []).map((source) => [source.bookId, source]));
     const discoveredById = new Map(sources.map((source) => [source.bookId, source]));
     for (const source of previous.sources || []) {
       if (!discoveredById.has(source.bookId) && source.collection !== "项目库") discoveredById.set(source.bookId, source);
     }
     const merged = [...discoveredById.values()].map((source) => ({ ...source, latestUpdateAt: oldById.get(source.bookId)?.latestUpdateAt || source.latestUpdateAt || null, latestUpdateStatus: oldById.get(source.bookId)?.latestUpdateAt || source.latestUpdateAt ? "verified" : "pending_reader_refresh" }));
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ ...previous, generatedAt: new Date().toISOString(), sources: merged, discovery: { ...(previous.discovery || {}), projectLibraryCount: merged.length, accountCount: merged.length } }, null, 2) + "\n");
+    if (configExists && Array.isArray(previous.sources) && previous.sources.length > merged.length) {
+      console.error(JSON.stringify({
+        ok: false,
+        reasonCode: "discovery_shrank",
+        message: `本次发现 ${merged.length} 个来源，少于现有 ${previous.sources.length} 个；为避免渲染失败导致误删，未修改 sources.json。`,
+        configPath: CONFIG_PATH,
+        discoveredCount: merged.length,
+        existingSourceCount: previous.sources.length,
+      }, null, 2));
+      process.exitCode = 3;
+      return;
+    }
+    const nextConfig = { ...previous, generatedAt: new Date().toISOString(), sources: merged, discovery: { ...(previous.discovery || {}), projectLibraryCount: merged.length, accountCount: merged.length } };
+    if (configExists) fs.copyFileSync(CONFIG_PATH, `${CONFIG_PATH}.bak-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+    const temporary = `${CONFIG_PATH}.${process.pid}.tmp`;
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(temporary, JSON.stringify(nextConfig, null, 2) + "\n");
+    fs.renameSync(temporary, CONFIG_PATH);
     console.log(JSON.stringify({ ok: true, configPath: CONFIG_PATH, discoveredCount: merged.length, invalidBookIds: merged.filter((source) => !source.bookId).map((source) => source.name) }, null, 2));
   } finally {
     await browser.close();

@@ -7,6 +7,8 @@ description: "Discover and maintain a logged-in WeRead public-account source reg
 
 Use the source registry as the only source-selection input. Do not hardcode a publisher name or Book ID in a run.
 
+**Every installation is user-specific.** On the first run, require the user to scan the WeRead QR code in their own logged-in Chrome, then discover and locally persist that user's public-account reader URLs and `MP_WXS_...` Book IDs. Read [references/onboarding.md](references/onboarding.md) before first-run setup or when the registry is missing.
+
 ## Repository and schedule boundaries
 
 - Keep the user's real `sources.json`, article output, media, diagnostics, and any Chrome profile outside the Git repository. Use `sources.example.json` only as a schema example.
@@ -23,20 +25,26 @@ Use **CDP mode** for deterministic batch jobs that need the API index, article c
 
 ## Workflow
 
-1. Validate the registry before browser work:
+1. On first run, complete user QR login and source discovery. Do not scrape articles before a non-empty local registry exists:
+
+   ```text
+   login -> verify shelf/archive -> discover reader URLs -> derive Book IDs -> merge/backup/atomically save sources.json -> validate -> collect
+   ```
+
+2. Validate the registry before browser work:
 
    ```bash
    node <skill-dir>/scripts/validate_sources.js \
      --config=/absolute/path/to/sources.json
    ```
 
-2. For direct mode, use the user's connected Chrome session and confirm the archive page visibly contains the expected public-account links. For CDP mode, ensure a Chrome instance with remote debugging is available at `WEREAD_CDP_URL` (default `http://127.0.0.1:9222`) and already signed in to `weread.qq.com`. Do not try to bypass login or CAPTCHA.
+3. For direct mode, use the user's connected Chrome session and confirm the archive page visibly contains the expected public-account links. For CDP mode, ensure a Chrome instance with remote debugging is available at `WEREAD_CDP_URL` (default `http://127.0.0.1:9222`) and already signed in to `weread.qq.com`. Do not try to bypass login or CAPTCHA.
 
-3. Select one source explicitly with `--source=<name>` or `--book-id=<MP_WXS_...>`. Use a narrow date window for a smoke test, then expand the range.
+4. Select one source explicitly with `--source=<name>` or `--book-id=<MP_WXS_...>`. Use a narrow date window for a smoke test, then expand the range.
 
-4. Reuse article cache files. A cached item is reusable only when its cache version, status, and non-empty content are valid. Preserve failures and diagnostics; do not silently drop them.
+5. Reuse article cache files. A cached item is reusable only when its cache version, status, and non-empty content are valid. Preserve failures and diagnostics; do not silently drop them.
 
-5. Treat these outcomes differently:
+6. Treat these outcomes differently:
    - `invalid_article_url`: the WeChat original ID is invalid/deleted/unpublished.
    - `navigation_race`: retry navigation, then record the retry count.
    - `rate_limited_or_blocked`: record HTTP status and visible risk-control text.
@@ -80,3 +88,4 @@ For a direct Chrome run, do not invoke the CDP runner. Read the archive and read
 - Keep source discovery separate from article scraping. A stale or missing latest-update timestamp must not remove a source from the registry.
 - Never interpret an empty homepage mini-shelf as the complete collection; full sources come from the configured archive discovery result.
 - Advance the incremental cursor after the index and output complete, even if a few articles are terminally unavailable; keep those failures in diagnostics. Do not advance the cursor after a fatal source-level error.
+- Never overwrite a non-empty local registry with an empty or suspiciously smaller discovery result without explicit user confirmation.
