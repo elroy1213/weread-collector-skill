@@ -15,7 +15,7 @@ This is a deliberate human-in-the-loop boundary. The Skill can reuse a logged-in
 
 ## 2. Discover this user's sources
 
-Open the full archive, not the homepage mini-shelf. Collect every visible WeRead public-account reader URL and derive its `MP_WXS_<digits>` Book ID. The source name and reader URL are user-specific metadata.
+Open the full archive by following the signed-in page's visible navigation, not by guessing or reusing an archive ID. Do not assume the homepage mini-shelf is complete. Collect every reader URL after the archive has finished rendering; if the archive is lazy-loaded, scroll it until the link count is stable across several passes. Derive each `MP_WXS_<digits>` Book ID from its reader URL. The source name and reader URL are user-specific metadata.
 
 The first discovery must fail closed when zero reader links are found. An empty result can mean login failure, the wrong shelf, a rendering timeout, or a changed WeRead UI. Never replace a non-empty registry with `sources: []`.
 
@@ -59,7 +59,10 @@ Do not put cookies, access tokens, article bodies, image files, or browser profi
 - Re-run discovery when the user asks to refresh followed accounts, when a source disappears, or when WeRead's archive changes.
 - Merge by `bookId`; preserve existing `latestUpdateAt`, cache references, and diagnostics unless the new discovery has stronger evidence.
 - If discovery returns fewer sources than before, report the difference and require an explicit confirmation before deleting sources. A transient rendering failure must not unsubscribe a source in local state.
+- Record discovery evidence (`archiveUrl`, `discoveredCount`, `invalidBookIds`, `discoveredAt`) alongside the registry so a later run can explain why the source set changed.
 
 ## 5. CDP variant
 
 If the user deliberately runs Chrome with remote debugging, `scripts/discover_sources_cdp.js` can perform the same discovery after the user has completed QR login in that Chrome profile. It must be given an explicit local `--config` path. If it reports `login_required` or `no_sources_found`, fix the browser state and rerun discovery; do not proceed to article scraping.
+
+For the first CDP run, use `--dry-run` first. Inspect the discovered count, names, and Book IDs. Only rerun without `--dry-run` after the user confirms that the set looks like their full archive.

@@ -16,10 +16,11 @@ Use the source registry as the only source-selection input. Do not hardcode a pu
 - GitHub is for versioning and validation. Scheduled collection must run on the user's Mac or a trusted self-hosted runner that has an already-authenticated Chrome profile; GitHub-hosted runners cannot access the user's WeRead login session.
 - Run one source at a time, persist per-article cache and diagnostics, and alert on failures rather than replacing the local registry.
 - For recurring execution, read [references/scheduling.md](references/scheduling.md). Use Codex desktop automation with Direct Chrome, or the bundled incremental runner with an authenticated local CDP Chrome. Do not schedule authenticated collection on GitHub-hosted runners.
+- For acceptance criteria and monitoring fields, read [references/reliability.md](references/reliability.md).
 
 ## Execution Modes
 
-Prefer **Direct Chrome mode** for interactive work. Use the Codex Chrome browser control skill to open `https://weread.qq.com/web/shelf/archive/1786504693`, read the visible `/web/mp/reader/` links, and open a reader page to read its directory and article body. This mode does not require a terminal or local CDP port and reuses the user's logged-in Chrome session. Use one tab sequentially, wait for the directory to render, and retry a page before classifying it as unavailable.
+Prefer **Direct Chrome mode** for interactive work. Use the Codex Chrome browser control skill to open `https://weread.qq.com/`, verify login, then follow the visible shelf/archive navigation. Never hardcode an archive ID: archive IDs can differ by user or session. Read the visible `/web/mp/reader/` links and open reader pages to read directories and article bodies. This mode does not require a terminal or local CDP port and reuses the user's logged-in Chrome session. Use one tab sequentially, wait for the directory to render, and retry a page before classifying it as unavailable.
 
 Use **CDP mode** for deterministic batch jobs that need the API index, article cache, media downloads, and diagnostics. CDP requires a Chrome instance with remote debugging at `WEREAD_CDP_URL`; it is optional for direct reading.
 
@@ -37,6 +38,8 @@ Use **CDP mode** for deterministic batch jobs that need the API index, article c
    node <skill-dir>/scripts/validate_sources.js \
      --config=/absolute/path/to/sources.json
    ```
+
+   For first-run CDP discovery, preview with `node <skill-dir>/scripts/discover_sources_cdp.js --config=/absolute/path/sources.json --dry-run` and inspect the count before allowing it to write the registry.
 
 3. For direct mode, use the user's connected Chrome session and confirm the archive page visibly contains the expected public-account links. For CDP mode, ensure a Chrome instance with remote debugging is available at `WEREAD_CDP_URL` (default `http://127.0.0.1:9222`) and already signed in to `weread.qq.com`. Do not try to bypass login or CAPTCHA.
 
