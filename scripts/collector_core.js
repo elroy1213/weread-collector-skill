@@ -307,7 +307,14 @@ async function main() {
   if (from >= toExclusive) throw new Error("起始日期必须早于截止日期");
   fs.mkdirSync(ARTICLE_DIR, { recursive: true });
 
-  const browser = await chromium.connectOverCDP(CDP_URL);
+  let browser;
+  try {
+    browser = await chromium.connectOverCDP(CDP_URL);
+  } catch (connectError) {
+    console.error(`❌ 连不上采集专用 Chrome（${CDP_URL}）。`);
+    console.error("👉 解决办法：先运行 ./scripts/start-chrome.sh 把它启动并完成微信读书登录，然后再来抓取。");
+    process.exit(2);
+  }
   try {
     const context = browser.contexts()[0];
     if (!context) throw new Error("CDP Chrome 没有可用的浏览器上下文");

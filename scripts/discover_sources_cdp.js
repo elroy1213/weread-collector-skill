@@ -21,26 +21,45 @@ function parseBookId(readerUrl) {
 }
 
 async function collectReaderLinks(page) {
-  let stablePasses = 0;
-  let previousCount = 0;
   const found = new Map();
-  for (let pass = 0; pass < 24 && stablePasses < 3; pass += 1) {
-    await page.waitForTimeout(700);
+  const collect = async () => {
     const links = await page.locator('a[href*="/web/mp/reader/"]').evaluateAll((elements) => elements.map((element) => ({
-      name: element.querySelector(".title")?.getAttribute("title") || (element.innerText || "").trim(),
+      name: element.getAttribute("title") || element.querySelector("[title]")?.getAttribute("title") || (element.innerText || "").trim(),
       readerUrl: element.href,
     })));
     for (const link of links) found.set(link.readerUrl, link);
-    if (found.size === previousCount) stablePasses += 1;
-    else stablePasses = 0;
-    previousCount = found.size;
-    await page.evaluate(() => window.scrollBy(0, Math.max(window.innerHeight || 800, 700)));
+  };
+  await collect();
+  // 归档页是「虚拟滚动列表」：只渲染当前视口、滚过的会被回收。
+  // 所以必须慢速小步滚动，让每一项都有机会渲染进 DOM，再用累计 Map 全部收集；
+  // 判定「到底」用滚动位置连续不变，而不是链接数稳定（虚拟列表会让 DOM 链接数抖动）。
+  let lastY = -1;
+  let sameY = 0;
+  for (let step = 0; step < 400; step += 1) {
+    await page.evaluate(() => window.scrollBy(0, 350));
+    await page.waitForTimeout(380);
+    await collect();
+    const y = await page.evaluate(() => window.scrollY);
+    if (Math.abs(y - lastY) < 1) {
+      sameY += 1;
+      if (sameY >= 6) break;
+    } else {
+      sameY = 0;
+      lastY = y;
+    }
   }
   return [...found.values()];
 }
 
 async function main() {
-  const browser = await chromium.connectOverCDP(CDP_URL);
+  let browser;
+  try {
+    browser = await chromium.connectOverCDP(CDP_URL);
+  } catch (connectError) {
+    console.error(`❌ 连不上采集专用 Chrome（${CDP_URL}）。`);
+    console.error("👉 解决办法：先运行 ./scripts/start-chrome.sh 把它启动并完成微信读书登录，然后再来发现公众号。");
+    process.exit(2);
+  }
   try {
     const context = browser.contexts()[0];
     if (!context) throw new Error("CDP Chrome 没有可用的浏览器上下文");
