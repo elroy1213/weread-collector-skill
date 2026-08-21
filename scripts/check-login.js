@@ -28,10 +28,19 @@ async function main() {
   try {
     browser = await chromium.connectOverCDP(CDP_URL);
   } catch (e) {
-    console.log("❌ 没找到正在运行的采集专用 Chrome。");
-    console.log("");
-    console.log("👉 解决办法：先运行下面这条命令启动它——");
-    console.log("     ./scripts/start-chrome.sh");
+    // 区分「完全没启动」和「端口有响应但连不上（Chrome 状态异常）」，给不同的下一步。
+    let portAlive = false;
+    try {
+      const r = await fetch(`${CDP_URL}/json/version`, { signal: AbortSignal.timeout(2500) });
+      portAlive = r.ok;
+    } catch (_) {}
+    if (portAlive) {
+      console.log("❌ 调试端口有响应，但连不上这个 Chrome（它的状态可能异常了）。");
+      console.log("👉 解决办法：把这个采集 Chrome 完全关掉，再运行 ./scripts/start-chrome.sh 重启一个。");
+    } else {
+      console.log("❌ 没找到正在运行的采集专用 Chrome。");
+      console.log("👉 解决办法：先运行 ./scripts/start-chrome.sh 启动它。");
+    }
     process.exit(2);
   }
   try {
