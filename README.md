@@ -59,7 +59,7 @@ npm install
 node scripts/discover_sources_cdp.js --config=sources.json
 ```
 
-看到 `发现 N 个公众号` 就说明认出你了。
+看到 `发现 N 个公众号` 就说明认出你了。这一步会生成 `sources.json`——**你的公众号清单**（只存在本机）。以后你新关注了公众号，重跑一次这个命令，清单自动更新合并（旧的不会丢）。
 
 **再抓某个公众号的文章**（把 `【公众号名字】` 换成你关注的名字）：
 
@@ -68,6 +68,25 @@ node scripts/weread-content-cdp.js --config=sources.json --source=【公众号�
 ```
 
 抓完的文章在 `outputs/weread-content/【公众号名字】/` 文件夹里，`.md` 文件双击就能看。
+
+---
+
+## 日常更新：一条命令全自动
+
+第一次跑通之后，以后每次想更新（抓新文章 + 合并新关注的公众号），只需要：
+
+```bash
+./scripts/update-all.sh
+```
+
+它会自动完成：检查登录态（过期会引导你重新扫码）→ 更新公众号清单（新关注的自动加进来）→ 逐源只抓新增文章（抓过的自动跳过）→ 打印汇总报告。
+
+```bash
+./scripts/update-all.sh --source=海外独角兽   # 只更新某一个公众号
+./scripts/update-all.sh --limit=20           # 每个公众号最多新抓 20 篇
+```
+
+> ⚠️ 微信读书的登录状态几天会过期一次（微信的限制），所以推荐节奏是：**每周跑一次 `update-all.sh`，它让你扫码时扫一下（10 秒），其余全自动**。
 
 ---
 
