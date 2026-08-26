@@ -95,11 +95,11 @@ The tail matters. A run that is 99% successful but silently drops the same sourc
 - **根因**：cookie 还在但 session token 已失效。
 - **处理**：以 API 探活（如 `/web/shelf/sync`）为登录态唯一判据，不看页面渲染。失效则重新扫码。
 
-## 8. mp/articles 索引接口失效
+## 8. mp/articles 索引接口失效（web 端已废弃）
 
-- **现象**：`/web/mp/articles?bookId=...` 返回 `errCode: -2041`；reader 页变空壳（文章列表不渲染）。
-- **根因**：微信读书接口变更。
-- **处理**：索引层若已留有完整文章 ID 列表（如 full_index.json），可直接改走 `mp.weixin.qq.com/s/<id>` 公开页抓正文（无需微信读书登录态）；索引重新发现需用 discover 流程在登录态下重建。
+- **现象**：`/web/mp/articles?bookId=...` 返回 `errCode: -2041`（errMsg 空白）；reader 页变空壳（文章列表不渲染，不发数据请求）。
+- **根因**：微信读书 web 端在 2026-08 下线了「公众号书架」功能，接口迁到 App 端。不是风控封号、不是登录态问题（`/web/shelf/sync` 仍正常返回书架数据）。
+- **处理**：正文抓取改走 `mp.weixin.qq.com/s/<id>` 公开页（不依赖微信读书）；文章列表/篇数改用 App 端新接口，见文末「微信读书接口规则（2026-08）」。若已留有完整文章 ID 列表（如 full_index.json），可直接抓正文。
 
 ## 9. 归档页虚拟滚动导致 discover 漏项
 
@@ -135,3 +135,50 @@ The tail matters. A run that is 99% successful but silently drops the same sourc
    - 有 og:title 但 js_content 空 → 纯图片/视频消息，跳过
    - 页面 title 空 + 正文全空（约 31KB 框架）→ 服务端空壳，标记 terminally unavailable
 2. 只有 curl 完全拿不到时才动用登录态 Chrome 验证。
+
+---
+
+# 微信读书接口规则（2026-08 更新）
+
+> 微信读书 2026-08 把「公众号」功能从 web 端迁到 App 端后，接口体系变了。以下规则来自 2026-08-26 实测，防止下次再踩。
+
+## 接口迁移总览
+
+| 用途 | 旧（web 端，已废弃） | 新（App 端） |
+|---|---|---|
+| 文章列表/篇数 | `/web/mp/articles?bookId=...` → -2041 | `/api/v2/platform/mps/<bookId>/articles?page=N` |
+| 文章链接 → 公众号 | — | `POST /api/v2/platform/wxs2mp` body `{url}` |
+| 登录 | 微信读书扫码 | `/api/v2/login/platform` → uuid+scanUrl → 轮询拿 vid+token |
+
+新接口在 web 端（weread.qq.com）直接调是 404，需要走中转服务 `https://weread.111965.xyz`（wewe-rss 作者维护的第三方，转发 App 端签名接口）或自行逆向 App 签名。
+
+## 新接口调用（中转服务版）
+
+```
+# 1. 登录：拿 uuid + 扫码链接
+GET /api/v2/login/platform → {"uuid","scanUrl"}
+# 2. 用户扫码后轮询结果
+GET /api/v2/login/platform/<uuid> → {"vid","token","username"}
+# 3. 查文章列表（headers: xid=vid, Authorization: Bearer token）
+GET /api/v2/platform/mps/<bookId>/articles?page=N → [{id,title,picUrl,publishTime,url}]
+# 4. 文章链接转正确 mpId（可选）
+POST /api/v2/platform/wxs2mp  body {"url":"https://mp.weixin.qq.com/s/<id>"} → [{id,name,cover}]
+```
+
+返回的 `id` 即 `mp.weixin.qq.com/s/<id>` 的正文链接 id，可直接喂给正文采集器。
+
+## 易错点（5 条，务必记住）
+
+1. **page 从 0 开始**：`page=0` 是最新一页，page 递增拿更早历史。传 `page=1` 会跳过第一页（可能误判为「无文章」）。
+2. **风控限流**：频繁调用会返回空 `[]`（不是没数据！）。需 ≥5 秒间隔 + 空返回自动重试（4 次）。不要一看到空就下「没文章」的结论。
+3. **bookId ≠ biz**：`bookId` 数字（`MP_WXS_xxx` 的 xxx）**不等于**公众号 `__biz` 解码的数字。之前「`biz = base64(bookId数字)`」的公式是错的（只对个别号碰巧成立）。正确拿 mpId 用 wxs2mp。
+4. **索引边界**：微信读书 App 端只索引最近约 2 年文章，更早的历史（page 翻到底后连续空）拿不到，属索引边界而非风控。
+5. **"No book found" ≠ 没收录**：wxs2mp 用转载文章链接反查，可能因 biz 对不上返回 `No book found`，**不代表公众号没被微信读书收录**。公众号有没有收录，以 registry 的 bookId 为准。
+
+## bookId 正确性自检
+
+registry 里每个源的 `readerUrl` 的 hex 部分编码了 bookId。自检方法：`bookId` 去掉 `MP_WXS_` 前缀后的数字串做 hex 编码，应出现在 `readerUrl` 里。若两者不一致，说明 bookId 解析有误，需重新 discover。
+
+## 隐私提醒
+
+中转服务 `weread.111965.xyz` 是第三方（wewe-rss 作者自建），扫码登录后 token 会经过它，有效期很长。使用前应向用户明确此隐私风险，验证/采集完成后建议不再复用该 token。
