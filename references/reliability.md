@@ -95,11 +95,12 @@ The tail matters. A run that is 99% successful but silently drops the same sourc
 - **根因**：cookie 还在但 session token 已失效。
 - **处理**：以 API 探活（如 `/web/shelf/sync`）为登录态唯一判据，不看页面渲染。失效则重新扫码。
 
-## 8. mp/articles 索引接口失效（web 端已废弃，且间歇性假恢复）
+## 8. mp/articles 索引接口灰窗（web 端间歇性可用，疑似迁 App 端后的临时放行）
 
 - **现象**：`/web/mp/articles?bookId=...` 返回 `errCode: -2041`（errMsg 空白）；reader 页变空壳（文章列表不渲染，不发数据请求）。
 - **根因**：微信读书 web 端在 2026-08 下线了「公众号书架」功能，接口迁到 App 端。不是风控封号、不是登录态问题（`/web/shelf/sync` 仍正常返回书架数据）。
 - **⚠️ 间歇性假恢复（2026-08-26 实测）**：8/26 下午该接口曾短暂恢复，能翻页拿到完整历史（海外独角兽 offset 0→430，435 篇，最早 2021-06-16）；但**次日（8/27）又全部回到 -2041**，且冷却 60s、换回 weread 首页、先访问 reader 页均无法恢复。判断为「灰度窗口」或「每日配额」型临时放行，**不可作为稳定依赖**。
+- **8/31 同日上午内波动（关键新发现）**：8/31 早 9:24 实测 `/web/mp/articles` 返回 -2041（此时登录态 `/web/shelf/sync` 正常返回 71 本书架数据），但 **10:23 重测即恢复**（海外独角兽 reviews=19、量子位/投中网/极客公园均 reviews=20）。说明「灰窗」可能按**小时级**波动、同一天内反复。**教训：不能凭单次 -2041 就断言「已废弃/不可用」**——先看登录态，登录态正常则 -2041 多为临时灰窗，隔 30–60 分钟重测即可。
 - **处理**：
   - 正文抓取改走 `mp.weixin.qq.com/s/<id>` 公开页（不依赖微信读书，稳定可用）。
   - 文章列表/篇数稳定方案用 App 端新接口（见文末「微信读书接口规则（2026-08）」）。**注意：该接口翻页到底能拿完整历史**（非仅 2 年，见易错点第 2 条），只是要慢速 + 重试穿透风控。
@@ -149,7 +150,7 @@ The tail matters. A run that is 99% successful but silently drops the same sourc
 
 ## 接口迁移总览
 
-| 用途 | 旧（web 端，已废弃） | 新（App 端） |
+| 用途 | 旧（web 端，间歇性灰窗） | 新（App 端，稳定） |
 |---|---|---|
 | 文章列表/篇数 | `/web/mp/articles?bookId=...` → -2041 | `/api/v2/platform/mps/<bookId>/articles?page=N` |
 | 文章链接 → 公众号 | — | `POST /api/v2/platform/wxs2mp` body `{url}` |
@@ -189,4 +190,6 @@ POST /api/v2/platform/wxs2mp  body {"url":"https://mp.weixin.qq.com/s/<id>"} →
 
 ## 隐私提醒
 
-中转服务 `weread.111965.xyz` 是第三方（wewe-rss 作者自建），扫码登录后 token 会经过它，有效期很长。使用前应向用户明确此隐私风险，验证/采集完成后建议不再复用该 token。
+中转服务 `weread.111965.xyz` 是第三方（wewe-rss 作者自建），扫码登录后 token 会经过它。使用前应向用户明确此隐私风险，验证/采集完成后建议不再复用该 token。
+
+> **token 失效节奏（2026-08-31 实测）**：token 的 JWT `exp` 虽标到 2103 年，但微信读书 session 实际约 **3–4 天失效**（8/27 生成的 token，8/31 即返回 `WeReadError401, -2041`）。依赖此 token 的定时/每日任务需内置「401 → 重新扫码」的兜底，否则会静默失败。
